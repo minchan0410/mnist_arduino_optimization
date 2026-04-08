@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/micro/micro_log.h"
+
+#include <Arduino.h>
 
 namespace tflite {
 
@@ -30,6 +33,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const float* bias_data, const RuntimeShape& output_shape,
                  float* output_data, const RuntimeShape& im2col_shape,
                  float* im2col_data) {
+  unsigned long _t0 = millis();
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
@@ -105,6 +109,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
       }
     }
   }
+  MicroPrintf("[PROF] reference float Conv: %u ms", (unsigned)(millis() - _t0));
 }
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
