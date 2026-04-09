@@ -1,5 +1,6 @@
 import pathlib
 import shutil
+import re
 import tvm
 from tvm import relay
 from tvm.relay.backend import Executor, Runtime
@@ -28,22 +29,14 @@ mod, params = relay.frontend.from_tflite(
     dtype_dict={INPUT_NAME: INPUT_DTYPE},
 )
 
-# tvmgen_default.h 생성에 필요한 이름 추출
-relay_input_name = mod["main"].params[0].name_hint   # e.g. serving_default_input_1_0
-subgraph = tflite_model.Subgraphs(0)
-_out_raw = subgraph.Tensors(subgraph.Outputs(0)).Name().decode("utf-8")
-relay_output_name = _out_raw.replace(":", "_").replace("/", "_").replace(";", "_")
-
 # ──────────────────────────────────
 # 2. nRF52840 (Cortex-M4) 컴파일
-#    unpacked-api + interface-api=c 를 써야 generate_project 템플릿과 호환됨
-#    packed API (옵션 없이 Executor("aot")) 쓰면 model.c 호출 규약 불일치로 크래시
 # ──────────────────────────────────
 TARGET   = tvm.target.Target("c -keys=cpu -mcpu=cortex-m4")
 RUNTIME  = Runtime("crt")
-EXECUTOR = Executor("aot", {"unpacked-api": True, "interface-api": "c"})
+EXECUTOR = Executor("aot", {"unpacked-api": True, "interface-api": "c++"})
 
-with tvm.transform.PassContext(opt_level=3, config={"tir.disable_vectorize": True}):
+with tvm.transform.PassContext(opt_level=4, config={"tir.disable_vectorize": True}):
     module = relay.build(
         mod,
         target=TARGET,
@@ -73,6 +66,4 @@ project = tvm.micro.generate_project(
     PROJECT_DIR,
     project_options,
 )
-
 print(f"프로젝트 생성 완료: {PROJECT_DIR}")
-print(f"Arduino IDE에서 .ino 파일을 열어 업로드하세요.")

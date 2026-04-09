@@ -22,12 +22,6 @@
 #include "Arduino.h"
 #include "standalone_crt/include/dlpack/dlpack.h"
 #include "standalone_crt/include/tvm/runtime/crt/stack_allocator.h"
-#include "standalone_crt/include/tvm/runtime/c_runtime_api.h"
-
-// tvmgen_default___tvm_main__ 선언 (packed API, DLTensor 포인터를 TVMValue로 감싸서 전달)
-extern int32_t tvmgen_default___tvm_main__(void* args, int32_t* arg_type_ids,
-                                           int32_t num_args, void* out_ret_value,
-                                           int32_t* out_ret_tcode, void* resource_handle);
 
 // AOT memory array, stack allocator wants it aligned
 static uint8_t g_aot_memory[WORKSPACE_SIZE]
@@ -93,40 +87,8 @@ tvm_crt_error_t TVMPlatformGenerateRandom(uint8_t* buffer, size_t num_bytes) {
 void TVMInitialize() { StackMemoryManager_Init(&app_workspace, g_aot_memory, WORKSPACE_SIZE); }
 
 void TVMExecute(void* input_data, void* output_data) {
-  static int64_t input_shape[4]  = {1, 28, 28, 1};
-  static int64_t output_shape[2] = {1, 27};
-
-  DLTensor input_tensor = {
-    .data        = input_data,
-    .device      = {kDLCPU, 0},
-    .ndim        = 4,
-    .dtype       = {kDLInt, 8, 1},
-    .shape       = input_shape,
-    .strides     = NULL,
-    .byte_offset = 0,
-  };
-
-  DLTensor output_tensor = {
-    .data        = output_data,
-    .device      = {kDLCPU, 0},
-    .ndim        = 2,
-    .dtype       = {kDLInt, 8, 1},
-    .shape       = output_shape,
-    .strides     = NULL,
-    .byte_offset = 0,
-  };
-
-  TVMValue args[2];
-  args[0].v_handle = &input_tensor;
-  args[1].v_handle = &output_tensor;
-
-  int32_t type_codes[2] = {7, 7};  // kTVMDLTensorHandle = 7
-  TVMValue ret_val;
-  int32_t ret_type_code = 0;
-
-  int ret = tvmgen_default___tvm_main__(
-      (void*)args, type_codes, 2, &ret_val, &ret_type_code, NULL);
-  if (ret != 0) {
+  int ret_val = tvmgen_default___tvm_main__(input_data, output_data);
+  if (ret_val != 0) {
     TVMPlatformAbort(kTvmErrorPlatformCheckFailure);
   }
 }
