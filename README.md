@@ -21,12 +21,13 @@
   <td align="left">
     <img src="_etc/cortex-m4.webp" width="200"/>
   </td>
-  <td align="left" valign="left" width="300">
+  <td align="left" valign="left">
     <b>왜 TVM 사용시 float32 모델이 int8 모델보다 빠른가?</b><br><br>
     Cortex-m4는 부동소수점 연산의 처리를 돕는 FPU가 존재함. TFLite 런타임을 사용시 CMSIS-NN이 적용되어 in8 모델의 연산이 최적화되지만 TVM은 따로 처리하지 않으면 CMSIS-NN 연산 사용이 불가함. 또한 int 연산은 FPU를 사용하지 못하기 때문에 오히려 float32 모델보다 더 느린 추론 시간을 보임. 그럼에도 불구하고 TVM의 최적화 덕분에 float32 모델을 사용한 TFLite 보다 빠른 추론 시간을 보임.
   </td>
 </tr>
 </table>
+
 ![모델 정확도 비교 차트](_etc/acc_chart.png)
 
 ---
