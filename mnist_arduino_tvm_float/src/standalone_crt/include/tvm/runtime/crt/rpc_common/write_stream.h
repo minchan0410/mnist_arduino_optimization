@@ -17,24 +17,36 @@
  * under the License.
  */
 
-#define WORKSPACE_SIZE 27264
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void TVMInitialize();
-
-/* TODO template this function signature with the input and output
- * data types and sizes. For example:
- *
- * void TVMExecute(uint8_t input_data[9216], uint8_t output_data[3]);
- *
- * Note this can only be done once MLF has JSON metadata describing
- * inputs and outputs.
+/*!
+ * \file framing.h
+ * \brief Framing for RPC.
  */
-void TVMExecute(void* input_data, void* output_data);
 
-#ifdef __cplusplus
-}  // extern "C"
-#endif
+#ifndef TVM_RUNTIME_CRT_RPC_COMMON_WRITE_STREAM_H_
+#define TVM_RUNTIME_CRT_RPC_COMMON_WRITE_STREAM_H_
+
+#include "inttypes.h"
+#include "stddef.h"
+#include "sys/types.h"
+#include "../../../../../../../src/standalone_crt/include/tvm/runtime/crt/error_codes.h"
+
+#include "../../../../../src/support/ssize.h"
+
+namespace tvm {
+namespace runtime {
+namespace micro_rpc {
+
+class WriteStream {
+ public:
+  virtual ~WriteStream();
+  virtual ssize_t Write(const uint8_t* data, size_t data_size_bytes) = 0;
+  virtual void PacketDone(bool is_valid) = 0;
+
+  tvm_crt_error_t WriteAll(uint8_t* data, size_t data_size_bytes, size_t* bytes_consumed);
+};
+
+}  // namespace micro_rpc
+}  // namespace runtime
+}  // namespace tvm
+
+#endif  // TVM_RUNTIME_CRT_RPC_COMMON_WRITE_STREAM_H_

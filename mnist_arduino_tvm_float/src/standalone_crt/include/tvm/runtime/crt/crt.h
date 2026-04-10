@@ -17,24 +17,32 @@
  * under the License.
  */
 
-#define WORKSPACE_SIZE 27264
+/*!
+ * \file tvm/runtime/crt/crt.h
+ * \brief Defines core life cycle functions used by CRT.
+ */
+
+#ifndef TVM_RUNTIME_CRT_CRT_H_
+#define TVM_RUNTIME_CRT_CRT_H_
+
+#include "inttypes.h"
+#include "../../../../../../src/standalone_crt/include/tvm/runtime/crt/error_codes.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void TVMInitialize();
-
-/* TODO template this function signature with the input and output
- * data types and sizes. For example:
- *
- * void TVMExecute(uint8_t input_data[9216], uint8_t output_data[3]);
- *
- * Note this can only be done once MLF has JSON metadata describing
- * inputs and outputs.
+/*!
+ * \brief Initialize various data structures used by the runtime.
+ * Prior to calling this, any initialization needed to support TVMPlatformMemory* functions should
+ * be completed.
+ * \return An error code describing the outcome of initialization. Generally, initialization
+ *     is only expected to fail due to a misconfiguration.
  */
-void TVMExecute(void* input_data, void* output_data);
+tvm_crt_error_t TVMInitializeRuntime();
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif
+
+#endif  // TVM_RUNTIME_CRT_CRT_H_

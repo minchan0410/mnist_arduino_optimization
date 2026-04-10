@@ -98,16 +98,11 @@ void loop() {
   // 입력 복사
   memcpy(g_input, x_test, kInputSize);
 
-  Serial.println("Starting inference...");
-  Serial.flush();
   
   unsigned long t0 = micros();
   TVMExecute(g_input, g_output);
   unsigned long t1 = micros();
   
-  Serial.println("Done!");
-  Serial.flush();
-
   // argmax
   int pred = 0;
   int8_t best = -128;
@@ -118,19 +113,12 @@ void loop() {
     }
   }
 
-  // 결과 출력 (EMNIST Letters: class 1='A', 2='B', ..., 23='W')
-  char pred_letter = (pred > 0 && pred <= 26) ? ('A' + pred - 1) : '?';
-  char gt_letter   = (kGroundTruth > 0 && kGroundTruth <= 26) ? ('A' + kGroundTruth - 1) : '?';
 
   Serial.print("Predicted: ");
   Serial.print(pred);
-  Serial.print(" (");
-  Serial.print(pred_letter);
-  Serial.print(")  GT: ");
+  Serial.print("  GT: ");
   Serial.print(kGroundTruth);
-  Serial.print(" (");
-  Serial.print(gt_letter);
-  Serial.print(")  Time: ");
+  Serial.print("  Time: ");
   Serial.print(t1 - t0);
   Serial.println(" us");
 

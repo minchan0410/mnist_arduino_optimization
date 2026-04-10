@@ -17,7 +17,7 @@
  * under the License.
  */
 
-#define WORKSPACE_SIZE 27264
+#define WORKSPACE_SIZE 79488
 
 #ifdef __cplusplus
 extern "C" {

@@ -17,24 +17,23 @@
  * under the License.
  */
 
-#define WORKSPACE_SIZE 27264
+// LINT_C_FILE
+
+/*!
+ * \file tvm/runtime/crt/include/tvm/runtime/crt/internal/common/func_registry.h
+ * \brief Abstract device memory management API
+ */
+#ifndef TVM_RUNTIME_CRT_INCLUDE_TVM_RUNTIME_CRT_INTERNAL_COMMON_FUNC_REGISTRY_H_
+#define TVM_RUNTIME_CRT_INCLUDE_TVM_RUNTIME_CRT_INTERNAL_COMMON_FUNC_REGISTRY_H_
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void TVMInitialize();
-
-/* TODO template this function signature with the input and output
- * data types and sizes. For example:
- *
- * void TVMExecute(uint8_t input_data[9216], uint8_t output_data[3]);
- *
- * Note this can only be done once MLF has JSON metadata describing
- * inputs and outputs.
- */
-void TVMExecute(void* input_data, void* output_data);
+int strcmp_cursor(const char** cursor, const char* name);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif
+
+#endif  // TVM_RUNTIME_CRT_INCLUDE_TVM_RUNTIME_CRT_INTERNAL_COMMON_FUNC_REGISTRY_H_

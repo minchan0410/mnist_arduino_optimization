@@ -9,12 +9,6 @@ from tensorflow.keras import layers, models
 import matplotlib.pyplot as plt
 print("TensorFlow version:", tf.__version__)
  
- 
-# emnist를 받아 데이터셋 구성
- 
- 
- 
- 
 # !wget https://biometrics.nist.gov/cs_links/EMNIST/gzip.zip
 # !unzip gzip.zip
  
@@ -55,40 +49,30 @@ test_num = 10
 plt.matshow(train_data[test_num])
 print(chr(train_label[test_num] + 64))
  
- 
-# 모델 구성
- 
+# 모델 구조
+# model = models.Sequential([
+#     # 입력: 28x28 흑백 이미지
+#     layers.Input(shape=(28, 28, 1), batch_size=1),
+    
+#     layers.Conv2D(16, kernel_size=(3, 3), padding='same', activation='relu'),
+#     layers.MaxPooling2D(pool_size=(2, 2)), # 14x14
+    
+#     layers.Conv2D(32, kernel_size=(3, 3), padding='same', activation='relu'),
+#     layers.MaxPooling2D(pool_size=(2, 2)), # 7x7
+    
+#     # Classifier
+#     layers.Flatten(),
+#     layers.Dense(64, activation='relu'),
+#     layers.Dense(27, activation='softmax') # 27개 클래스 분류
+# ])
  
 model = models.Sequential([
-    # 입력 레이어 명시 (TFLite 변환 시 입력 형태가 고정되어야 오류가 없습니다)
-    layers.Input(shape=(28, 28, 1)),
- 
-    # 1st Block
-    layers.Conv2D(8, kernel_size=(3, 3), padding='same'),
-    layers.BatchNormalization(),
-    layers.Activation('relu'),
-    
-    # 2nd Block (크기 축소: 28x28 -> 14x14)
-    layers.Conv2D(16, kernel_size=(3, 3), padding='same'),
-    layers.BatchNormalization(),
-    layers.Activation('relu'),
-    layers.MaxPooling2D(pool_size=(2, 2)),
-    
-    # 3rd Block (크기 축소: 14x14 -> 7x7)
-    layers.Conv2D(32, kernel_size=(3, 3), padding='same'),
-    layers.BatchNormalization(),
-    layers.Activation('relu'),
-    layers.MaxPooling2D(pool_size=(2, 2)),
-    
-    # 과적합 방지
-    layers.Dropout(0.25),
-    
-    # Flatten layer
+    layers.Input(shape=(28, 28, 1), batch_size=1),
+    layers.Conv2D(4, (3, 3), strides=2, padding='same', activation='relu'),  # 14x14
     layers.Flatten(),
-    # 최종 출력 (다중 분류이므로 softmax 활성화 함수 사용)
+    layers.Dense(64, activation='relu'),
     layers.Dense(27, activation='softmax')
 ])
- 
 model.summary()
  
  
@@ -118,7 +102,7 @@ converter = tf.lite.TFLiteConverter.from_keras_model(model)
 tflite_model = converter.convert()
  
 # 모델을 디스크에 저장
-open("model.tflite", "wb").write(tflite_model)
+open("lite_model.tflite", "wb").write(tflite_model)
 
 # xxd -i 기능을 Python으로 구현 (shell 명령어 대체)
 def xxd_i(input_file, output_file):
@@ -134,10 +118,7 @@ def xxd_i(input_file, output_file):
         f.write(f'}};\nunsigned int {var_name}_len = {len(data)};\n')
 
 # 파일을 C 소스파일로 저장
-xxd_i('model.tflite', 'model.cc')
-# 소스파일을 출력
-with open('model.cc') as f:
-    print(f.read())
+xxd_i('lite_model.tflite', 'lite_model.cc')
 
 # 양자화하여 모델을 텐서플로우 라이트 형식으로 변환 (INT8 양자화, representative dataset 사용)
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
@@ -157,6 +138,35 @@ converter.inference_output_type = tf.int8
 tflite_model = converter.convert()
 
 # 모델을 디스크에 저장
-open("quantized_model.tflite", "wb").write(tflite_model)
-xxd_i('quantized_model.tflite', 'qmodel.cc')
+open("lite_quantized_model.tflite", "wb").write(tflite_model)
+xxd_i('lite_quantized_model.tflite', 'lite_qmodel.cc')
 print("done")
+
+# ── 최종 평가 ──────────────────────────────────────────
+print("\n=== 모델 성능 비교 ===")
+
+# 1. Keras float 모델
+print("\n[Float model]")
+_, keras_acc = model.evaluate(test_data, test_label, verbose=0)
+print(f"  accuracy: {keras_acc:.4f}")
+
+# 2. 양자화 TFLite 모델 (int8)
+print("\n[Quantized(int8) model]")
+interpreter = tf.lite.Interpreter(model_content=tflite_model)
+interpreter.allocate_tensors()
+input_details  = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+scale, zero_point = input_details[0]['quantization']
+
+correct = 0
+for i in range(len(test_data)):
+    sample   = test_data[i].reshape(1, 28, 28, 1).astype(np.float32)
+    q_sample = (sample / scale + zero_point).astype(np.int8)
+    interpreter.set_tensor(input_details[0]['index'], q_sample)
+    interpreter.invoke()
+    output = interpreter.get_tensor(output_details[0]['index'])
+    if np.argmax(output) == test_label[i]:
+        correct += 1
+
+quant_acc = correct / len(test_data)
+print(f"  accuracy: {quant_acc:.4f}")

@@ -1,0 +1,182 @@
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include <TensorFlowLite.h>
+
+#include "main_functions.h"
+#include "mnist_model_data.h" // model
+#include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_log.h"
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/micro/micro_profiler_interface.h"
+#include "tensorflow/lite/micro/system_setup.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+
+class ArduinoMillisProfiler : public tflite::MicroProfilerInterface {
+ public:
+  static constexpr int kMaxEvents = 32;
+
+  uint32_t BeginEvent(const char* tag) override {
+    uint32_t idx = num_events_ % kMaxEvents;
+    tags_[idx] = tag;
+    start_ms_[idx] = millis();
+    num_events_++;
+    return idx;
+  }
+
+  void EndEvent(uint32_t event_handle) override {
+    unsigned long elapsed = millis() - start_ms_[event_handle];
+    Serial.print("[PROF] ");
+    Serial.print(tags_[event_handle]);
+    Serial.print(": ");
+    Serial.print(elapsed);
+    Serial.println(" ms");
+  }
+
+ private:
+  const char* tags_[kMaxEvents];
+  unsigned long start_ms_[kMaxEvents];
+  uint32_t num_events_ = 0;
+};
+
+// EMNIST(Upper letter)
+const int kInputTensorSize = 1 * 784;
+const int kNumClass = 27;
+const int kAccQueueSize = 100;
+const int kGroundTruth = 23; // W
+
+// Globals, used for compatibility with Arduino-style sketches.
+namespace
+{
+  const tflite::Model *model = nullptr;
+  tflite::MicroInterpreter *interpreter = nullptr;
+  TfLiteTensor *input = nullptr;
+  ArduinoMillisProfiler profiler;
+
+  // In order to use optimized tensorflow lite kernels, a signed int8_t quantized
+  // model is preferred over the legacy unsigned model format. This means that
+  // throughout this project, input images must be converted from unisgned to
+  // signed format. The easiest and quickest way to convert from unsigned to
+  // signed 8-bit integers is to subtract 128 from the unsigned value to get a
+  // signed value.
+
+  // An area of memory to use for input, output, and intermediate arrays.
+  constexpr int kTensorArenaSize = 100 * 1024;
+  // Keep aligned to 16 bytes for CMSIS
+  alignas(16) uint8_t tensor_arena[kTensorArenaSize];
+} // namespace
+
+// The name of this function is important for Arduino compatibility.
+void setup()
+{
+  Serial.begin(9600);
+  tflite::InitializeTarget();
+
+  // Map the model into a usable data structure. This doesn't involve any
+  // copying or parsing, it's a very lightweight operation.
+  model = tflite::GetModel(emnist_model);
+  if (model->version() != TFLITE_SCHEMA_VERSION)
+  {
+    MicroPrintf(
+        "Model provided is schema version %d not equal "
+        "to supported version %d.",
+        model->version(), TFLITE_SCHEMA_VERSION);
+    return;
+  }
+
+  // Pull in only the operation implementations we need.
+  // This relies on a complete list of all the ops needed by this graph.
+  // An easier approach is to just use the AllOpsResolver, but this will
+  // incur some penalty in code space for op implementations that are not
+  // needed by this graph.
+  //
+  // tflite::AllOpsResolver resolver;
+  // NOLINTNEXTLINE(runtime-global-variables)
+  static tflite::MicroMutableOpResolver<10> micro_op_resolver;
+  micro_op_resolver.AddShape();
+  micro_op_resolver.AddStridedSlice();
+  micro_op_resolver.AddPack();
+  micro_op_resolver.AddMaxPool2D();
+  micro_op_resolver.AddFullyConnected();
+  micro_op_resolver.AddAveragePool2D();
+  micro_op_resolver.AddConv2D();
+  micro_op_resolver.AddDepthwiseConv2D();
+  micro_op_resolver.AddReshape();
+  micro_op_resolver.AddSoftmax();
+
+  // static tflite::AllOpsResolver resolver;
+
+  // Build an interpreter to run the model with.
+  // NOLINTNEXTLINE(runtime-global-variables)
+  static tflite::MicroInterpreter static_interpreter(
+      model, micro_op_resolver, tensor_arena, kTensorArenaSize,
+      nullptr, &profiler);
+  interpreter = &static_interpreter;
+
+  // Allocate memory from the tensor_arena for the model's tensors.
+  TfLiteStatus allocate_status = interpreter->AllocateTensors();
+  if (allocate_status != kTfLiteOk)
+  {
+    MicroPrintf("AllocateTensors() failed");
+    return;
+  }
+
+  // Get information about the memory area to use for the model's input.
+  input = interpreter->input(0);
+}
+
+// The name of this function is important for Arduino compatibility.
+void loop()
+{
+
+  float x_test[kInputTensorSize] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.003921568859368563, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0784313753247261, 0.4470588266849518, 0.4901960790157318, 0.32156863808631897, 0.14509804546833038, 0.14509804546833038, 0.15294118225574493, 0.45098039507865906, 0.615686297416687, 0.3686274588108063, 0.08235294371843338, 0.03921568766236305, 0.125490203499794, 0.14509804546833038, 0.14509804546833038, 0.14509804546833038, 0.14509804546833038, 0.14509804546833038, 0.14509804546833038, 0.14509804546833038, 0.32156863808631897, 0.4901960790157318, 0.4470588266849518, 0.0784313753247261, 0.0, 0.0, 0.0, 0.0117647061124444, 0.4274509847164154, 0.9607843160629272, 0.9764705896377563, 0.9137254953384399, 0.8509804010391235, 0.8509804010391235, 0.8509804010391235, 0.9607843160629272, 0.9843137264251709, 0.9176470637321472, 0.6745098233222961, 0.5568627715110779, 0.7960784435272217, 0.8509804010391235, 0.8509804010391235, 0.8509804010391235, 0.8509804010391235, 0.8509804010391235, 0.8509804010391235, 0.8509804010391235, 0.9137254953384399, 0.9764705896377563, 0.9607843160629272, 0.4274509847164154, 0.0117647061124444, 0.0, 0.0, 0.01568627543747425, 0.4470588266849518, 0.9921568632125854, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9882352948188782, 0.9843137264251709, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.49803921580314636, 0.01568627543747425, 0.0, 0.0, 0.0, 0.1764705926179886, 0.8392156958580017, 0.9137254953384399, 0.9843137264251709, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9960784316062927, 0.9960784316062927, 0.9843137264251709, 0.4431372582912445, 0.01568627543747425, 0.0, 0.0, 0.0, 0.0, 0.019607843831181526, 0.08627451211214066, 0.32156863808631897, 0.501960813999176, 0.6274510025978088, 0.7215686440467834, 0.8509804010391235, 0.8509804010391235, 0.8549019694328308, 0.9764705896377563, 0.9960784316062927, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9960784316062927, 0.9960784316062927, 0.9686274528503418, 0.8470588326454163, 0.6666666865348816, 0.32549020648002625, 0.027450980618596077, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.007843137718737125, 0.019607843831181526, 0.062745101749897, 0.09803921729326248, 0.14509804546833038, 0.1568627506494522, 0.19607843458652496, 0.8901960849761963, 0.9960784316062927, 1.0, 1.0, 0.9960784316062927, 0.9960784316062927, 0.9882352948188782, 0.9607843160629272, 0.8627451062202454, 0.6235294342041016, 0.14901961386203766, 0.08235294371843338, 0.0117647061124444, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.03529411926865578, 0.3019607961177826, 0.5490196347236633, 0.9686274528503418, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.95686274766922, 0.6941176652908325, 0.4470588266849518, 0.19607843458652496, 0.0784313753247261, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0117647061124444, 0.13333334028720856, 0.686274528503418, 0.9647058844566345, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9921568632125854, 0.8666666746139526, 0.45098039507865906, 0.18039216101169586, 0.027450980618596077, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0117647061124444, 0.13333334028720856, 0.3294117748737335, 0.686274528503418, 0.9843137264251709, 0.9960784316062927, 0.9960784316062927, 0.9921568632125854, 0.9176470637321472, 0.7921568751335144, 0.35686275362968445, 0.01568627543747425, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.03921568766236305, 0.30980393290519714, 0.800000011920929, 0.9137254953384399, 0.9843137264251709, 0.9960784316062927, 1.0, 1.0, 0.9372549057006836, 0.45490196347236633, 0.13725490868091583, 0.027450980618596077, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0784313753247261, 0.48235294222831726, 0.8627451062202454, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 1.0, 1.0, 1.0, 0.9725490212440491, 0.6470588445663452, 0.14509804546833038, 0.08235294371843338, 0.125490203499794, 0.03529411926865578, 0.01568627543747425, 0.01568627543747425, 0.01568627543747425, 0.01568627543747425, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3921568691730499, 0.9333333373069763, 0.9960784316062927, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9960784316062927, 0.9921568632125854, 0.9215686321258545, 0.9176470637321472, 0.9607843160629272, 0.8705882430076599, 0.8509804010391235, 0.8509804010391235, 0.8509804010391235, 0.7960784435272217, 0.45098039507865906, 0.125490203499794, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.12941177189350128, 0.6392157077789307, 0.95686274766922, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 1.0, 1.0, 1.0, 1.0, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9411764740943909, 0.43529412150382996, 0.0117647061124444, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.003921568859368563, 0.12941177189350128, 0.4941176474094391, 0.8470588326454163, 0.9137254953384399, 0.9803921580314636, 0.9960784316062927, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9960784316062927, 0.9960784316062927, 0.9137254953384399, 0.32156863808631897, 0.007843137718737125, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.019607843831181526, 0.08627451211214066, 0.32156863808631897, 0.9843137264251709, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.9960784316062927, 0.9960784316062927, 0.9803921580314636, 0.9137254953384399, 0.8509804010391235, 0.7960784435272217, 0.4313725531101227, 0.07058823853731155, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.03921568766236305, 0.501960813999176, 0.9960784316062927, 1.0, 1.0, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9960784316062927, 0.9647058844566345, 0.8156862854957581, 0.5490196347236633, 0.32156863808631897, 0.15294118225574493, 0.125490203499794, 0.01568627543747425, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.08627451211214066, 0.37254902720451355, 0.8666666746139526, 0.9960784316062927, 1.0, 0.9960784316062927, 0.9921568632125854, 0.9176470637321472, 0.8509804010391235, 0.843137264251709, 0.49803921580314636, 0.18039216101169586, 0.03529411926865578, 0.007843137718737125, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0117647061124444, 0.6039215922355652, 0.9098039269447327, 0.9921568632125854, 0.9960784316062927, 0.9960784316062927, 0.9882352948188782, 0.8117647171020508, 0.37254902720451355, 0.15294118225574493, 0.14509804546833038, 0.0313725508749485, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.007843137718737125, 0.3019607961177826, 0.9686274528503418, 0.9960784316062927, 1.0, 0.9960784316062927, 0.9490196108818054, 0.5137255191802979, 0.03529411926865578, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01568627543747425, 0.4901960790157318, 0.9960784316062927, 0.9960784316062927, 0.9882352948188782, 0.9098039269447327, 0.5137255191802979, 0.125490203499794, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01568627543747425, 0.4431372582912445, 0.9921568632125854, 0.9647058844566345, 0.6941176652908325, 0.4274509847164154, 0.08627451211214066, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0313725508749485, 0.43529412150382996, 0.3019607961177826, 0.0313725508749485, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0117647061124444, 0.007843137718737125, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+  for(int i =0; i < kInputTensorSize; i++){
+    input->data.f[i] = x_test[i];
+  }
+
+  // Run the model on this input and make sure it succeeds.
+  unsigned long t_start = micros();
+  if (kTfLiteOk != interpreter->Invoke())
+  {
+    MicroPrintf("Invoke failed.");
+  }
+  unsigned long t_end = micros();
+
+  TfLiteTensor *output = interpreter->output(0);
+
+  int predicated_class = 0;
+  float max_score = -1;
+  for (int i = 0; i < kNumClass; i++)
+  {
+    float score = output->data.f[i];
+    if (score > max_score)
+    {
+      predicated_class = i;
+      max_score = score;
+    }
+  }
+
+
+  Serial.print("Predicted: ");
+  Serial.print(predicated_class);
+  Serial.print("  GT: ");
+  Serial.print(kGroundTruth);
+  Serial.print("  Inference: ");
+  Serial.print(t_end - t_start);
+  Serial.println(" us ");
+
+  delay(1000);
+}

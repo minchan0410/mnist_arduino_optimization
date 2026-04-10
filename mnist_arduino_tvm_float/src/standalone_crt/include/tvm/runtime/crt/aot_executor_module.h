@@ -17,24 +17,26 @@
  * under the License.
  */
 
-#define WORKSPACE_SIZE 27264
+/*!
+ * \file graph_executor.h
+ * \brief Tiny AoT executor
+ */
+#ifndef TVM_RUNTIME_CRT_AOT_EXECUTOR_MODULE_H_
+#define TVM_RUNTIME_CRT_AOT_EXECUTOR_MODULE_H_
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void TVMInitialize();
+#include "../../../../../../src/standalone_crt/include/tvm/runtime/crt/error_codes.h"
 
-/* TODO template this function signature with the input and output
- * data types and sizes. For example:
- *
- * void TVMExecute(uint8_t input_data[9216], uint8_t output_data[3]);
- *
- * Note this can only be done once MLF has JSON metadata describing
- * inputs and outputs.
+/*!
+ * \brief Register the "tvm.aot_executor.create" constructor PackedFunc.
  */
-void TVMExecute(void* input_data, void* output_data);
+tvm_crt_error_t TVMAotExecutorModule_Register();
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif
+
+#endif  // TVM_RUNTIME_CRT_AOT_EXECUTOR_MODULE_H_
