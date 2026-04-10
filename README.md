@@ -18,7 +18,7 @@
 <br><br>
 <table>
 <tr>
-  <td align="left">
+  <td align="left" style="width:220px; min-width:220px;">
     <img src="_etc/cortex-m4.webp" width="200"/>
   </td>
   <td align="left" valign="left">
