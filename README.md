@@ -10,10 +10,12 @@
 | m1 | Arduino TFLite (CMSIS-NN) | int8 | 133.7 ms |
 | m1 | TVM AOT | float32 | 278.8 ms |
 | m1 | TVM AOT | int8 | 341.0 ms |
-| m2 | Arduino TFLite (CMSIS-NN) | int8 | 12.0 ms |
+| **m2** | **Arduino TFLite (CMSIS-NN)** | **int8** | **12.0 ms** |
 | **m2** | **TVM AOT + CMSIS-NN** | **int8** | **6.6 ms** |
 
+<br><br>
 ![추론 시간 비교 차트](_etc/inference_time_chart.png)
+<br><br>
 ![모델 정확도 비교 차트](_etc/acc_chart.png)
 
 ---
@@ -36,5 +38,4 @@
 </table>
 
 ---
-
-
+정확도는 93% --> 88%로 약 5% 감소하였지만 m2_int는 양자화 및 모델 경량화를 통해 기존(m1_float)대비 **98.45%** 감소된 속도를 통해 추론을 수행할 수 있었다.
